@@ -33,6 +33,8 @@ import logging
 import traceback
 import mimetypes
 from contextlib import contextmanager
+import json
+import encoder
 
 import os
 py3 = sys.version_info[0] == 3
@@ -312,6 +314,11 @@ def _get_control_url(xml, urn):
    xml -- device description xml
    return -- control url or empty string if wasn't found
    """
+   # return '/dev/d744927d-b2b6-f164-ffff-ffffc7831a22/svc/upnp-org/AVTransport/action'
+   # return '/upnp/control/AVTransport1'
+   print 'xml:', json.dumps(xml, indent = 4)
+   print 'urn:', urn
+   print '_get_control_url', _xpath(xml, 'root/device/serviceList/service@serviceType={}/controlURL'.format(urn))
    return _xpath(xml, 'root/device/serviceList/service@serviceType={}/controlURL'.format(urn))
 
 @contextmanager
@@ -339,6 +346,7 @@ def _send_tcp(to, payload):
    """
    try:
       sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+      print payload.encode('utf-8')
       sock.settimeout(5)
       sock.connect(to)
       sock.sendall(payload.encode('utf-8'))
@@ -346,13 +354,17 @@ def _send_tcp(to, payload):
       data = sock.recv(2048)
       if py3:
          data = data.decode('utf-8')
+    #   print 'data:'
+    #   print data
       data = _xml2dict(_unescape_xml(data), True)
       errorDescription = _xpath(data, 's:Envelope/s:Body/s:Fault/detail/UPnPError/errorDescription')
       if errorDescription is not None:
          logging.error(errorDescription)
    except Exception as e:
+      print e
       data = ''
    finally:
+      print 'yes'
       sock.close()
    return data
 
@@ -382,6 +394,7 @@ class DlnapDevice:
 
    def __init__(self, raw, ip):
       self.__logger = logging.getLogger(self.__class__.__name__)
+      self.__logger.setLevel(logging.DEBUG)
       self.__logger.info('=> New DlnapDevice (ip = {}) initialization..'.format(ip))
 
       self.ip = ip
@@ -401,13 +414,24 @@ class DlnapDevice:
          self.__logger.info('port: {}'.format(self.port))
 
          raw_desc_xml = urlopen(self.location).read().decode('utf-8')
+        #  print raw_desc_xml
          self.__desc_xml = _xml2dict(raw_desc_xml)
+         # print self.__desc_xml
+         print json.dumps(self.__desc_xml, indent=4)
+         # print '\n\n\n*********'
+         # o = encoder.XML2Dict()
+         # print o.parse(raw_desc_xml)
+         # print json.dumps(o.parse(raw_desc_xml), indent = 4)
+         #self.__desc_xml = o.parse(raw_desc_xml)
+
          self.__logger.debug('description xml: {}'.format(self.__desc_xml))
 
          self.name = _get_friendly_name(self.__desc_xml)
          self.__logger.info(u'friendlyName: {}'.format(self.name))
 
          self.control_url = _get_control_url(self.__desc_xml, URN_AVTransport)
+
+         print 'control_url', self.control_url, self.__desc_xml
          self.__logger.info('control_url: {}'.format(self.control_url))
 
          self.has_av_transport = self.control_url is not None
